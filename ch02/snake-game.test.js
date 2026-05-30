@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
-import { SnakeGame } from './snake-game.js';
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const { SnakeGame } = require('./snake-game.js');
 
 describe('SnakeGame', () => {
   it('moves snake one grid cell per tick in current direction', () => {
@@ -93,5 +93,13 @@ describe('SnakeGame', () => {
     assert.strictEqual(state.snake.length, 3, 'snake back to 3 segments');
     assert.deepStrictEqual(state.snake[0], { x: 10, y: 10 }, 'head at start position');
     assert.notDeepStrictEqual(state.food, { x: 0, y: 0 }, 'new food placed');
+  });
+
+  it('uses injected random function for deterministic food placement', () => {
+    const seeded = () => 0;
+    const game = new SnakeGame(20, 20, seeded);
+
+    const state = game.getState();
+    assert.deepStrictEqual(state.food, { x: 0, y: 0 }, 'seeded random(0) → food at (0,0)');
   });
 });

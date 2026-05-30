@@ -1,9 +1,10 @@
 // Pure game logic — no DOM, no Canvas, no side effects.
 
-export class SnakeGame {
-  constructor(cols = 20, rows = 20) {
+class SnakeGame {
+  constructor(cols = 20, rows = 20, random) {
     this.cols = cols;
     this.rows = rows;
+    this.random = random || Math.random;
     this.reset();
   }
 
@@ -22,8 +23,8 @@ export class SnakeGame {
 
   getState() {
     return {
-      snake: this.snake,
-      food: this.food,
+      snake: [...this.snake],
+      food: { ...this.food },
       score: this.score,
       gameOver: this.gameOver,
     };
@@ -64,8 +65,8 @@ export class SnakeGame {
   _placeFood() {
     const occupied = new Set(this.snake.map(s => `${s.x},${s.y}`));
     for (let i = 0; i < 100; i++) {
-      const x = Math.floor(Math.random() * this.cols);
-      const y = Math.floor(Math.random() * this.rows);
+      const x = Math.floor(this.random() * this.cols);
+      const y = Math.floor(this.random() * this.rows);
       if (!occupied.has(`${x},${y}`)) {
         this.food = { x, y };
         return;
@@ -80,4 +81,8 @@ export class SnakeGame {
       }
     }
   }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SnakeGame };
 }
