@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — software-engineering/ch02</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .badge-strong { background: #059669; }
+      .badge-explore { background: #d97706; }
+      .badge-spec { background: #64748b; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <header class="space-y-2">
+        <h1 class="text-3xl font-semibold tracking-tight">Architecture review</h1>
+        <p class="text-sm text-slate-500">software-engineering/ch02 &mdash; 3 files, 343 lines &mdash; 2026-05-30</p>
+        <div class="flex gap-4 text-xs text-slate-400 pt-2">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-800"></span> module</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 border-t border-dashed border-red-500"></span> leak</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded deep border border-slate-600"></span> deep module</span>
+        </div>
+      </header>
+
+      <!-- ============================== -->
+      <!-- Candidate 1 -->
+      <!-- ============================== -->
+      <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-5">
+        <div class="flex items-center gap-3">
+          <h2 class="text-xl font-semibold">1. Resolve SnakeGame duplication</h2>
+          <span class="text-xs font-mono px-2 py-0.5 rounded-full text-white badge-strong">Strong</span>
+          <span class="text-xs font-mono text-slate-400">in-process</span>
+        </div>
+
+        <p class="text-sm font-mono text-slate-500">
+          snake-game.js &middot; snake.html (lines 6&ndash;79)
+        </p>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+            <p class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — duplicate sources of truth</p>
+            <pre class="mermaid">
+              flowchart TB
+                A[snake.html<br/>SnakeGame inline] --> B[Canvas DOM]
+                C[snake-game.js<br/>SnakeGame export] --> D[snake-game.test.js<br/>Node test runner]
+                A -.->|manual copy-paste| C
+                classDef leak stroke:#dc2626,stroke-width:2px,stroke-dasharray:5 5;
+                class A,C leak
+            </pre>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
+            <p class="text-xs uppercase tracking-wider text-emerald-700 mb-3">After — single module via local server</p>
+            <pre class="mermaid">
+              flowchart TB
+                M[snake-game.js<br/>SnakeGame] --> R[snake.html<br/>rendering + input]
+                M --> T[snake-game.test.js<br/>Node test runner]
+                classDef deep fill:#0f172a,color:#e2e8f0,stroke:#334155;
+                class M deep
+            </pre>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <p class="text-sm"><span class="font-semibold">Problem.</span> SnakeGame class lives in two files — <code>snake-game.js</code> (ES module) and inline in <code>snake.html</code> (copy-pasted). Any logic change must be made in both places or they diverge.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Serve <code>snake.html</code> via local HTTP server so the browser can load <code>snake-game.js</code> as a module. Remove the inline copy. Falls back gracefully: add a <code>&lt;script src="snake-game.js"&gt;</code> with a UMD-style wrapper, or just document <code>python3 -m http.server</code> as the launch command.</p>
+          <ul class="text-sm text-slate-600 space-y-1">
+            <li>&bull; leverage: one interface, two call sites (renderer + tests)</li>
+            <li>&bull; locality: logic change = one edit, not two</li>
+            <li>&bull; deletion test: remove snake-game.js and tests break; remove inline copy and HTML breaks</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============================== -->
+      <!-- Candidate 2 -->
+      <!-- ============================== -->
+      <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-5">
+        <div class="flex items-center gap-3">
+          <h2 class="text-xl font-semibold">2. Inject randomness seam into SnakGame</h2>
+          <span class="text-xs font-mono px-2 py-0.5 rounded-full text-white badge-explore">Worth exploring</span>
+          <span class="text-xs font-mono text-slate-400">in-process</span>
+        </div>
+
+        <p class="text-sm font-mono text-slate-500">
+          snake-game.js &middot; snake-game.test.js
+        </p>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+            <p class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — hardcoded Math.random()</p>
+            <div class="space-y-2 text-xs font-mono">
+              <div class="border border-slate-300 rounded px-3 py-2 bg-white">
+                <span class="text-slate-400">_placeFood()</span><br/>
+                <span class="text-red-500">Math.random()</span> &rarr; food position
+              </div>
+              <div class="border border-dashed border-red-300 rounded px-3 py-2 bg-red-50 text-red-600">
+                Tests can&rsquo;t seed food placement.
+                <br/>Every food-placement assertion is best-effort.
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
+            <p class="text-xs uppercase tracking-wider text-emerald-700 mb-3">After — injectable random function</p>
+            <div class="space-y-2 text-xs font-mono">
+              <div class="border border-emerald-300 rounded px-3 py-2 bg-white">
+                <span class="text-slate-400">constructor(cols, rows, </span><span class="text-emerald-600">random?</span><span class="text-slate-400">)</span><br/>
+                <span class="text-emerald-600">this.random = random ?? Math.random</span>
+              </div>
+              <div class="border border-emerald-300 rounded px-3 py-2 bg-emerald-50 text-emerald-700">
+                <span class="text-slate-600">_placeFood()</span> uses <span class="text-emerald-600">this.random()</span><br/>
+                Tests inject seeded PRNG &rarr; deterministic.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <p class="text-sm"><span class="font-semibold">Problem.</span> <code>_placeFood()</code> calls <code>Math.random()</code> directly. No seam exists to control food placement. The &ldquo;eating food&rdquo; test manually injects a food coordinate to work around this.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Accept optional <code>random: () =&gt; number</code> in the constructor, defaulting to <code>Math.random</code>. Tests can inject a seeded PRNG. Interface grows by one optional parameter; implementation doesn&rsquo;t change.</p>
+          <ul class="text-sm text-slate-600 space-y-1">
+            <li>&bull; leverage: same interface, one optional seam for testability</li>
+            <li>&bull; locality: randomness decision lives at construction, not inside _placeFood</li>
+            <li>&bull; one adapter (Math.random) is the default; seeded PRNG is the second, justifying the seam</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============================== -->
+      <!-- Candidate 3 -->
+      <!-- ============================== -->
+      <article class="rounded-xl border border-slate-200 bg-white p-6 space-y-5">
+        <div class="flex items-center gap-3">
+          <h2 class="text-xl font-semibold">3. Defensive copy in getState()</h2>
+          <span class="text-xs font-mono px-2 py-0.5 rounded-full text-white badge-explore">Worth exploring</span>
+          <span class="text-xs font-mono text-slate-400">in-process</span>
+        </div>
+
+        <p class="text-sm font-mono text-slate-500">
+          snake-game.js :23&ndash;29
+        </p>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+            <p class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — mutable reference leak</p>
+            <pre class="mermaid">
+              flowchart LR
+                S[SnakeGame.snake<br/>internal array] -->|getState| C[Caller]
+                C -.->|mutates| S
+                classDef leak stroke:#dc2626,stroke-width:2px;
+                class C leak
+            </pre>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
+            <p class="text-xs uppercase tracking-wider text-emerald-700 mb-3">After — snapshot returned</p>
+            <pre class="mermaid">
+              flowchart LR
+                S[SnakeGame.snake<br/>internal array] -->|getState| CP[shallow copy]
+                CP --> C[Caller]
+                C -.->|mutates copy| CP
+                classDef safe stroke:#059669,stroke-width:2px;
+                class CP safe
+            </pre>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <p class="text-sm"><span class="font-semibold">Problem.</span> <code>getState()</code> returns the live <code>this.snake</code> array. A caller doing <code>game.getState().snake.pop()</code> corrupts internal game state. The interface leaks mutability without declaring it.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Return a shallow copy: <code>snake: [...this.snake]</code>. One line change. Callers get a snapshot; internal array stays protected behind the interface.</p>
+          <ul class="text-sm text-slate-600 space-y-1">
+            <li>&bull; leverage: interface contract strengthened — read-only snapshot</li>
+            <li>&bull; locality: mutation protection lives at the seam, not in callers</li>
+            <li>&bull; cost: one array allocation per getState() call (~20 elements max)</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============================== -->
+      <!-- Top recommendation -->
+      <!-- ============================== -->
+      <section class="rounded-xl border border-emerald-300 bg-emerald-50/50 p-6 space-y-3">
+        <p class="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Top recommendation</p>
+        <h3 class="text-lg font-semibold text-emerald-900">Tackle Candidate 1 first — the SnakeGame duplication.</h3>
+        <p class="text-sm text-emerald-800">
+          It&rsquo;s the only candidate where the deletion test fails in both directions: delete either copy and something breaks. The other two candidates are interface refinements on a single module; they become easier to apply once there&rsquo;s only one module to refine.
+        </p>
+        <p class="text-xs text-emerald-600">
+          Candidates 2 and 3 are small, independent, and safe to apply after Candidate 1. They don&rsquo;t block each other.
+        </p>
+      </section>
+
+    </main>
+  </body>
+</html>
