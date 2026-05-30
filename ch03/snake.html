@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>贪吃蛇</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    border: 1px solid #333;
+  }
+</style>
+</head>
+<body>
+<canvas id="board"></canvas>
+<script>
+const BOARD_SIZE = 20;
+const CELL_SIZE = 25;
+const TICK_MS = 150;
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+canvas.width = BOARD_SIZE * CELL_SIZE;
+canvas.height = BOARD_SIZE * CELL_SIZE;
+
+let snake, food, direction, score, gameState, pendingDirection, tickInterval;
+
+function randomCell() {
+  return {
+    x: Math.floor(Math.random() * BOARD_SIZE),
+    y: Math.floor(Math.random() * BOARD_SIZE)
+  };
+}
+
+function cellOnSnake(pos, skipTail) {
+  const end = skipTail ? snake.length - 1 : snake.length;
+  for (let i = 0; i < end; i++) {
+    if (snake[i].x === pos.x && snake[i].y === pos.y) return true;
+  }
+  return false;
+}
+
+function spawnFood() {
+  let pos;
+  do { pos = randomCell(); } while (cellOnSnake(pos, false));
+  food = pos;
+}
+
+function initGame() {
+  snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  direction = {x:1, y:0};
+  score = 0;
+  gameState = "idle";
+  pendingDirection = null;
+  spawnFood();
+  if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // snake
+  for (let i = 0; i < snake.length; i++) {
+    const seg = snake[i];
+    ctx.fillStyle = i === 0 ? "#4f4" : "#2a2";
+    ctx.fillRect(seg.x * CELL_SIZE + 1, seg.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+  }
+
+  // food
+  ctx.fillStyle = "#f44";
+  ctx.fillRect(food.x * CELL_SIZE + 1, food.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+
+  // score
+  ctx.fillStyle = "#fff";
+  ctx.font = "16px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("分数: " + score, 8, 18);
+
+  if (gameState === "gameover") {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f44";
+    ctx.font = "bold 32px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px monospace";
+    ctx.fillText("得分: " + score, canvas.width / 2, canvas.height / 2 + 20);
+    ctx.font = "14px monospace";
+    ctx.fillText("按 Enter 重新开始", canvas.width / 2, canvas.height / 2 + 48);
+  }
+}
+
+function opposing(dir, pend) {
+  return dir.x + pend.x === 0 && dir.y + pend.y === 0;
+}
+
+function move() {
+  if (pendingDirection && !opposing(direction, pendingDirection)) {
+    direction = pendingDirection;
+  }
+  pendingDirection = null;
+  const head = {x: snake[0].x + direction.x, y: snake[0].y + direction.y};
+  snake.unshift(head);
+}
+
+function checkWall(head) {
+  return head.x < 0 || head.x >= BOARD_SIZE || head.y < 0 || head.y >= BOARD_SIZE;
+}
+
+function checkSelf(head) {
+  for (let i = 1; i < snake.length; i++) {
+    if (snake[i].x === head.x && snake[i].y === head.y) return true;
+  }
+  return false;
+}
+
+function tick() {
+  if (gameState !== "playing") return;
+  move();
+  const head = snake[0];
+  if (checkWall(head) || checkSelf(head)) {
+    gameState = "gameover";
+    clearInterval(tickInterval);
+    tickInterval = null;
+    draw();
+    return;
+  }
+  if (head.x === food.x && head.y === food.y) {
+    score += 10;
+    spawnFood();
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function startLoop() {
+  if (tickInterval) clearInterval(tickInterval);
+  tickInterval = setInterval(tick, TICK_MS);
+}
+
+document.addEventListener("keydown", function(e) {
+  if (gameState === "gameover") {
+    if (e.key === "Enter") { initGame(); }
+    return;
+  }
+
+  const dirs = {
+    ArrowUp:    {x:0, y:-1},
+    ArrowDown:  {x:0, y:1},
+    ArrowLeft:  {x:-1,y:0},
+    ArrowRight: {x:1, y:0}
+  };
+  const d = dirs[e.key];
+  if (!d) return;
+
+  e.preventDefault();
+
+  if (gameState === "idle") {
+    direction = d;
+    gameState = "playing";
+    startLoop();
+    return;
+  }
+
+  if (!opposing(direction, d)) {
+    pendingDirection = d;
+  }
+});
+
+initGame();
+</script>
+</body>
+</html>
