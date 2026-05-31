@@ -160,17 +160,17 @@ function draw() {
     ctx.beginPath(); ctx.arc(p.x, p.y, CELL*0.2*p.life, 0, Math.PI*2); ctx.fill();
   }
 
-  // Food glow
-  const fx = food[0] * CELL + CELL/2, fy = food[1] * CELL + CELL/2;
-  const glow = ctx.createRadialGradient(fx, fy, CELL*0.15, fx, fy, CELL*0.7);
-  glow.addColorStop(0, "rgba(231,76,60,0.6)"); glow.addColorStop(1, "rgba(231,76,60,0)");
-  ctx.fillStyle = glow; ctx.fillRect(fx-CELL*0.7, fy-CELL*0.7, CELL*1.4, CELL*1.4);
-
   // Food
-  ctx.fillStyle = "#e74c3c";
-  ctx.shadowColor = "#e74c3c"; ctx.shadowBlur = 12;
-  ctx.beginPath(); ctx.arc(fx, fy, CELL*0.38, 0, Math.PI*2); ctx.fill();
-  ctx.shadowBlur = 0;
+  if (food) {
+    const fx = food[0] * CELL + CELL/2, fy = food[1] * CELL + CELL/2;
+    const glow = ctx.createRadialGradient(fx, fy, CELL*0.15, fx, fy, CELL*0.7);
+    glow.addColorStop(0, "rgba(231,76,60,0.6)"); glow.addColorStop(1, "rgba(231,76,60,0)");
+    ctx.fillStyle = glow; ctx.fillRect(fx-CELL*0.7, fy-CELL*0.7, CELL*1.4, CELL*1.4);
+    ctx.fillStyle = "#e74c3c";
+    ctx.shadowColor = "#e74c3c"; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(fx, fy, CELL*0.38, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
 
   // Snake
   for (let i = 0; i < snake.length; i++) {
@@ -190,7 +190,10 @@ function draw() {
     // Segment
     ctx.fillStyle = `hsl(${hue},75%,${isHead?58:45}%)`;
     ctx.shadowColor = `hsl(${hue},80%,50%)`; ctx.shadowBlur = isHead ? 14 : 6;
-    ctx.beginPath(); ctx.roundRect(x*CELL+3, y*CELL+3, CELL-6, CELL-6, 7); ctx.fill();
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x*CELL+3, y*CELL+3, CELL-6, CELL-6, 7); }
+    else { ctx.rect(x*CELL+3, y*CELL+3, CELL-6, CELL-6); }
+    ctx.fill();
     ctx.shadowBlur = 0;
 
     // Eyes on head
