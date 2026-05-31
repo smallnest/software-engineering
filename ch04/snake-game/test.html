@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake Game Tests</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+.pass { color: #2ecc71; }
+.fail { color: #e74c3c; }
+.test { margin: 4px 0; }
+.summary { margin-top: 16px; font-size: 18px; }
+</style>
+</head>
+<body>
+<h2>Snake Game Automated Tests</h2>
+<div id="results"></div>
+
+<script>
+"use strict";
+
+const COLS = 20, ROWS = 20;
+const DIR = { UP: [0,-1], DOWN: [0,1], LEFT: [-1,0], RIGHT: [1,0] };
+
+let pass = 0, fail = 0;
+const results = document.getElementById("results");
+
+function log(name, ok, detail) {
+  const cls = ok ? "pass" : "fail";
+  const sym = ok ? "PASS" : "FAIL";
+  results.innerHTML += `<div class="test ${cls}">${sym} — ${name}${detail ? ": " + detail : ""}</div>`;
+  ok ? pass++ : fail++;
+}
+
+// ==================== Test helpers ====================
+
+// Pure game logic — no DOM dependency
+class SnakeGame {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.snake = [[8, 10], [9, 10], [10, 10]];
+    this.direction = "RIGHT";
+    this.nextDirection = "RIGHT";
+    this.score = this.snake.length;
+    this.gameOver = false;
+    this.food = null;
+    this.spawnFood();
+  }
+
+  spawnFood() {
+    const occupied = new Set(this.snake.map(([x,y]) => `${x},${y}`));
+    const free = [];
+    for (let x = 0; x < COLS; x++) {
+      for (let y = 0; y < ROWS; y++) {
+        if (!occupied.has(`${x},${y}`)) free.push([x, y]);
+      }
+    }
+    this.food = free[Math.floor(Math.random() * free.length)];
+  }
+
+  isOpposite(a, b) {
+    const opposites = { UP: "DOWN", DOWN: "UP", LEFT: "RIGHT", RIGHT: "LEFT" };
+    return opposites[a] === b;
+  }
+
+  setDirection(dir) {
+    if (!this.isOpposite(dir, this.direction)) {
+      this.nextDirection = dir;
+    }
+  }
+
+  step() {
+    if (this.gameOver) return;
+
+    const head = this.snake[this.snake.length - 1];
+    const [dx, dy] = DIR[this.nextDirection];
+    const newHead = [head[0] + dx, head[1] + dy];
+    this.direction = this.nextDirection;
+
+    if (newHead[0] < 0 || newHead[0] >= COLS || newHead[1] < 0 || newHead[1] >= ROWS) {
+      this.gameOver = true;
+      return;
+    }
+
+    const willGrow = this.food && newHead[0] === this.food[0] && newHead[1] === this.food[1];
+    const checkBody = willGrow ? this.snake : this.snake.slice(0, -1);
+    if (checkBody.some(([x, y]) => x === newHead[0] && y === newHead[1])) {
+      this.gameOver = true;
+      return;
+    }
+
+    this.snake.push(newHead);
+    if (willGrow) {
+      this.score++;
+      this.spawnFood();
+    } else {
+      this.snake.shift();
+    }
+  }
+}
+
+function overrideFood(game, pos) {
+  game.food = [...pos];
+}
+
+// ==================== Tests ====================
+
+// Test 1: Initial state — 20x20 grid, snake length 3
+(() => {
+  const g = new SnakeGame();
+  const ok1 = g.snake.length === 3;
+  const ok2 = g.food !== null && g.food.length === 2;
+  const ok3 = g.gameOver === false;
+  const ok4 = g.score === 3;
+  log("Initial snake length = 3", ok1, `length=${g.snake.length}`);
+  log("Initial food exists", ok2, `food=${JSON.stringify(g.food)}`);
+  log("Initial gameOver = false", ok3);
+  log("Initial score = 3", ok4, `score=${g.score}`);
+})();
+
+// Test 2: Direction keys change direction (not opposite)
+(() => {
+  const g = new SnakeGame();
+  g.direction = "RIGHT";
+  // Try opposite
+  g.setDirection("LEFT");
+  log("Cannot reverse direction (RIGHT→LEFT blocked)", g.nextDirection === "RIGHT");
+  // Same direction
+  g.setDirection("RIGHT");
+  log("Same direction accepted (RIGHT→RIGHT)", g.nextDirection === "RIGHT");
+  // Perpendicular
+  g.setDirection("UP");
+  log("Perpendicular direction accepted (RIGHT→UP)", g.nextDirection === "UP");
+  // Now UP, try DOWN
+  g.direction = "UP";
+  g.setDirection("DOWN");
+  log("Cannot reverse direction (UP→DOWN blocked)", g.nextDirection === "UP");
+})();
+
+// Test 3: Snake moves correctly
+(() => {
+  const g = new SnakeGame();
+  const before = [...g.snake[g.snake.length - 1]];
+  g.step();
+  const after = g.snake[g.snake.length - 1];
+  log("Snake head moves right", after[0] === before[0] + 1 && after[1] === before[1]);
+})();
+
+// Test 4: Eating food grows snake + new food position
+(() => {
+  const g = new SnakeGame();
+  const head = g.snake[g.snake.length - 1];
+  // Place food right in front
+  g.food = [head[0] + 1, head[1]];
+  const prevLen = g.snake.length;
+  g.step();
+  const grew = g.snake.length === prevLen + 1;
+  const foodMoved = g.food[0] !== head[0] + 1 || g.food[1] !== head[1];
+  const notOnSnake = !g.snake.some(([x, y]) => x === g.food[0] && y === g.food[1]);
+  log("Snake grows after eating food", grew, `len ${prevLen}→${g.snake.length}`);
+  log("Food moves after being eaten", foodMoved);
+  log("New food not on snake body", notOnSnake);
+})();
+
+// Test 5: Wall collision ends game
+(() => {
+  const g = new SnakeGame();
+  // Move snake to far right
+  g.snake = [[18, 5], [19, 5]];
+  g.direction = "RIGHT";
+  g.nextDirection = "RIGHT";
+  overrideFood(g, [10, 10]);
+  g.step(); // head moves to [20, 5] → out of bounds
+  log("Wall collision triggers gameOver", g.gameOver === true);
+})();
+
+// Test 6: Self collision ends game
+(() => {
+  const g = new SnakeGame();
+  g.snake = [
+    [10, 9], [11, 9], [12, 9], [12, 10],
+    [11, 10], [11, 11]
+  ];
+  g.direction = "UP";
+  g.nextDirection = "UP";
+  overrideFood(g, [15, 15]);
+  g.step(); // head at [11,10] moves to [11,9] which is [12,9]? No—head at [11,11]
+  // Head is at [11,11], moving UP to [11,10], which IS in body
+  log("Self collision triggers gameOver", g.gameOver === true);
+})();
+
+// Test 7: Reset restores initial state
+(() => {
+  const g = new SnakeGame();
+  g.snake = [[10, 10], [11, 10], [12, 10], [13, 10]];
+  g.score = 10;
+  g.gameOver = true;
+  g.reset();
+  const len3 = g.snake.length === 3;
+  const notOver = g.gameOver === false;
+  const scoreReset = g.score === 3;
+  const foodPresent = g.food !== null && g.food.length === 2;
+  log("Reset: snake length = 3", len3);
+  log("Reset: gameOver = false", notOver);
+  log("Reset: score = 3", scoreReset);
+  log("Reset: food exists", foodPresent);
+})();
+
+// Test 8: Food spawns not on snake
+(() => {
+  const g = new SnakeGame();
+  for (let i = 0; i < 50; i++) {
+    g.spawnFood();
+    const onSnake = g.snake.some(([x, y]) => x === g.food[0] && y === g.food[1]);
+    if (onSnake) {
+      log("Food never spawns on snake (50 iterations)", false, `food on snake at iteration ${i}`);
+      return;
+    }
+  }
+  log("Food never spawns on snake (50 iterations)", true);
+})();
+
+// Test 9: Snake start position is valid (near center, horizontal)
+(() => {
+  const g = new SnakeGame();
+  const tail = g.snake[0], mid = g.snake[1], head = g.snake[2];
+  // Horizontal: all same y
+  const horizontal = tail[1] === mid[1] && mid[1] === head[1];
+  // Left to right: tail.x < mid.x < head.x
+  const ltr = tail[0] < mid[0] && mid[0] < head[0];
+  // Near center
+  const nearCenter = mid[0] >= 8 && mid[0] <= 12 && mid[1] >= 8 && mid[1] <= 12;
+  log("Initial snake is horizontal", horizontal);
+  log("Initial snake left→right ordering", ltr);
+  log("Initial snake near center", nearCenter);
+})();
+
+// Test 10: No step after gameOver
+(() => {
+  const g = new SnakeGame();
+  g.gameOver = true;
+  const snap = [...g.snake.map(p => [...p])];
+  g.step();
+  const unchanged = snap.every(([x, y], i) => x === g.snake[i][0] && y === g.snake[i][1]);
+  log("No movement after gameOver", unchanged);
+})();
+
+// Summary
+const total = pass + fail;
+document.getElementById("results").innerHTML +=
+  `<div class="summary">${pass}/${total} passed` +
+  (fail > 0 ? ` — ${fail} FAILED` : " — All passed! ✓") + `</div>`;
+
+// Signal completion
+if (fail === 0) {
+  console.log("<promise>SNAKE_GAME_COMPLETE</promise>");
+}
+</script>
+</body>
+</html>

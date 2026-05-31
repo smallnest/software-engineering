@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake Game</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  display: flex; justify-content: center; align-items: center;
+  min-height: 100vh; background: #1a1a2e; font-family: monospace;
+}
+#game-container { text-align: center; }
+#score { color: #eee; font-size: 20px; margin-bottom: 8px; }
+canvas { border: 2px solid #333; background: #0f0f1a; }
+#overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; justify-content: center; align-items: center;
+  pointer-events: none;
+}
+.overlay-text {
+  color: #fff; font-size: 28px; background: rgba(0,0,0,0.8);
+  padding: 16px 32px; border-radius: 8px; display: none;
+}
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="score">Score: 0</div>
+  <canvas id="canvas"></canvas>
+</div>
+<div id="overlay"><div class="overlay-text" id="overlay-text"></div></div>
+<script>
+"use strict";
+
+const COLS = 20, ROWS = 20, CELL = 25;
+const INITIAL_SPEED = 150;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const overlayText = document.getElementById("overlay-text");
+
+canvas.width = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+let snake, food, direction, nextDirection, score, gameOver, lastStep, speed;
+
+const DIR = { UP: [0,-1], DOWN: [0,1], LEFT: [-1,0], RIGHT: [1,0] };
+const opposites = { UP: "DOWN", DOWN: "UP", LEFT: "RIGHT", RIGHT: "LEFT" };
+
+function init() {
+  snake = [[8, 10], [9, 10], [10, 10]];
+  direction = "RIGHT";
+  nextDirection = "RIGHT";
+  score = snake.length;
+  gameOver = false;
+  lastStep = 0;
+  speed = INITIAL_SPEED;
+  spawnFood();
+  updateScore();
+  overlayText.style.display = "none";
+}
+
+function spawnFood() {
+  const occupied = new Set(snake.map(([x,y]) => `${x},${y}`));
+  const free = [];
+  for (let x = 0; x < COLS; x++) {
+    for (let y = 0; y < ROWS; y++) {
+      if (!occupied.has(`${x},${y}`)) free.push([x, y]);
+    }
+  }
+  food = free[Math.floor(Math.random() * free.length)];
+}
+
+function updateScore() {
+  scoreEl.textContent = `Score: ${score}`;
+}
+
+function step() {
+  const head = snake[snake.length - 1];
+  const [dx, dy] = DIR[nextDirection];
+  const newHead = [head[0] + dx, head[1] + dy];
+  direction = nextDirection;
+
+  // Wall collision
+  if (newHead[0] < 0 || newHead[0] >= COLS || newHead[1] < 0 || newHead[1] >= ROWS) {
+    endGame();
+    return;
+  }
+
+  // Self collision (skip tail since it will move away unless we grow)
+  const willGrow = newHead[0] === food[0] && newHead[1] === food[1];
+  const checkBody = willGrow ? snake : snake.slice(0, -1);
+  if (checkBody.some(([x, y]) => x === newHead[0] && y === newHead[1])) {
+    endGame();
+    return;
+  }
+
+  snake.push(newHead);
+  if (willGrow) {
+    score++;
+    updateScore();
+    spawnFood();
+  } else {
+    snake.shift();
+  }
+}
+
+function endGame() {
+  gameOver = true;
+  overlayText.textContent = `Game Over! Score: ${score}`;
+  overlayText.style.display = "block";
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid lines
+  ctx.strokeStyle = "#1a1a2e";
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * CELL, 0);
+    ctx.lineTo(x * CELL, ROWS * CELL);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * CELL);
+    ctx.lineTo(COLS * CELL, y * CELL);
+    ctx.stroke();
+  }
+
+  // Food
+  ctx.fillStyle = "#e74c3c";
+  ctx.fillRect(food[0] * CELL + 2, food[1] * CELL + 2, CELL - 4, CELL - 4);
+
+  // Snake
+  for (let i = 0; i < snake.length; i++) {
+    const [x, y] = snake[i];
+    ctx.fillStyle = i === snake.length - 1 ? "#2ecc71" : "#27ae60";
+    ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
+  }
+}
+
+function loop(timestamp) {
+  if (gameOver) { draw(); requestAnimationFrame(loop); return; }
+  if (timestamp - lastStep >= speed) {
+    step();
+    lastStep = timestamp;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (gameOver) {
+    if (e.code === "Space") { e.preventDefault(); init(); }
+    return;
+  }
+  const map = {
+    ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT",
+  };
+  const dir = map[e.code];
+  if (dir && direction !== opposites[dir]) {
+    e.preventDefault();
+    nextDirection = dir;
+  }
+});
+
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
