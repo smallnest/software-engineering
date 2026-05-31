@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>贪吃蛇</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  display: flex; justify-content: center; align-items: center;
+  min-height: 100vh; background: #0a0a1a; font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#wrap { text-align: center; position: relative; }
+#header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 4px; }
+#score, #high { color: #aab; font-size: 15px; font-variant-numeric: tabular-nums; }
+#high { color: #887; }
+#high span { color: #da0; }
+canvas { display: block; border-radius: 6px; box-shadow: 0 0 30px rgba(60,120,255,0.15); }
+#msg {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #fff; font-size: 22px; pointer-events: none; text-align: center;
+  text-shadow: 0 0 12px rgba(0,0,0,0.8); line-height: 1.6;
+  transition: opacity 0.3s;
+}
+#msg small { font-size: 14px; color: #99b; display: block; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="header">
+    <div id="score">🍎 0</div>
+    <div id="high">🏆 <span>0</span></div>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="msg"></div>
+</div>
+<script>
+"use strict";
+
+const COLS = 20, ROWS = 20, CELL = 28;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const highEl = document.getElementById("high").querySelector("span");
+const msgEl = document.getElementById("msg");
+
+canvas.width = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+const DIR = { UP: [0,-1], DOWN: [0,1], LEFT: [-1,0], RIGHT: [1,0] };
+const OPP = { UP: "DOWN", DOWN: "UP", LEFT: "RIGHT", RIGHT: "LEFT" };
+const BASE_SPEED = 130;
+const SPEED_STEP = 3;
+const MIN_SPEED = 55;
+
+let snake, food, dir, nextDir, score, highScore, over, paused;
+let lastStep, speed, particles, trail;
+
+const STORAGE_KEY = "snake_high_v2";
+try { highScore = parseInt(localStorage.getItem(STORAGE_KEY)) || 0; } catch(_) { highScore = 0; }
+highEl.textContent = highScore;
+
+function rng(min, max) { return Math.floor(Math.random() * (max - min)) + min; }
+
+function init() {
+  const cy = Math.floor(ROWS / 2);
+  snake = [[4,cy],[5,cy],[6,cy]];
+  dir = "RIGHT"; nextDir = "RIGHT";
+  score = 0; over = false; paused = true;
+  lastStep = 0; speed = BASE_SPEED;
+  particles = []; trail = [];
+  spawnFood();
+  updateScore();
+  msgEl.innerHTML = "贪吃蛇<br><small>按空格或点击开始</small>";
+  msgEl.style.opacity = "1";
+}
+
+function spawnFood() {
+  const occ = new Set(snake.map(([x,y]) => `${x},${y}`));
+  const free = [];
+  for (let x = 0; x < COLS; x++)
+    for (let y = 0; y < ROWS; y++)
+      if (!occ.has(`${x},${y}`)) free.push([x,y]);
+  if (free.length) { food = free[Math.floor(Math.random() * free.length)]; }
+  else { food = null; }
+}
+
+function updateScore() {
+  scoreEl.innerHTML = `🍎 ${score}`;
+  if (score > highScore) {
+    highScore = score;
+    try { localStorage.setItem(STORAGE_KEY, highScore); } catch(_) {}
+  }
+  highEl.textContent = highScore;
+}
+
+function spawnParticles(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = (Math.PI * 2 * i) / 8 + Math.random() * 0.4;
+    particles.push({ x: x * CELL + CELL/2, y: y * CELL + CELL/2, vx: Math.cos(angle) * 2.5, vy: Math.sin(angle) * 2.5, life: 1, hue: rng(30, 60) });
+  }
+}
+
+function step() {
+  dir = nextDir;
+  const head = snake[snake.length - 1];
+  const [dx, dy] = DIR[dir];
+  const nh = [head[0] + dx, head[1] + dy];
+
+  if (nh[0] < 0 || nh[0] >= COLS || nh[1] < 0 || nh[1] >= ROWS) { endGame(); return; }
+
+  const grow = food && nh[0] === food[0] && nh[1] === food[1];
+  const body = grow ? snake : snake.slice(0, -1);
+  if (body.some(([x,y]) => x === nh[0] && y === nh[1])) { endGame(); return; }
+
+  snake.push(nh);
+  if (grow) {
+    score++;
+    speed = Math.max(MIN_SPEED, BASE_SPEED - score * SPEED_STEP);
+    spawnParticles(food[0], food[1]);
+    spawnFood();
+    updateScore();
+  } else {
+    snake.shift();
+  }
+  trail.push({ x: nh[0] * CELL + CELL/2, y: nh[1] * CELL + CELL/2, life: 1 });
+}
+
+function endGame() {
+  over = true;
+  msgEl.innerHTML = `游戏结束<br><small>得分: ${score} | 空格重来</small>`;
+  msgEl.style.opacity = "1";
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid
+  ctx.strokeStyle = "rgba(255,255,255,0.03)";
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x*CELL,0); ctx.lineTo(x*CELL,ROWS*CELL); ctx.stroke(); }
+  for (let y = 0; y <= ROWS; y++) { ctx.beginPath(); ctx.moveTo(0,y*CELL); ctx.lineTo(COLS*CELL,y*CELL); ctx.stroke(); }
+
+  // Trail
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const t = trail[i];
+    t.life -= 0.04;
+    if (t.life <= 0) { trail.splice(i,1); continue; }
+    ctx.fillStyle = `rgba(46,204,113,${t.life * 0.25})`;
+    ctx.beginPath(); ctx.arc(t.x, t.y, CELL*0.35, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.life -= 0.03;
+    if (p.life <= 0) { particles.splice(i,1); continue; }
+    ctx.fillStyle = `hsla(${p.hue},90%,55%,${p.life})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, CELL*0.2*p.life, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Food glow
+  const fx = food[0] * CELL + CELL/2, fy = food[1] * CELL + CELL/2;
+  const glow = ctx.createRadialGradient(fx, fy, CELL*0.15, fx, fy, CELL*0.7);
+  glow.addColorStop(0, "rgba(231,76,60,0.6)"); glow.addColorStop(1, "rgba(231,76,60,0)");
+  ctx.fillStyle = glow; ctx.fillRect(fx-CELL*0.7, fy-CELL*0.7, CELL*1.4, CELL*1.4);
+
+  // Food
+  ctx.fillStyle = "#e74c3c";
+  ctx.shadowColor = "#e74c3c"; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.arc(fx, fy, CELL*0.38, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Snake
+  for (let i = 0; i < snake.length; i++) {
+    const [x, y] = snake[i];
+    const cx = x * CELL + CELL/2, cy = y * CELL + CELL/2;
+    const isHead = i === snake.length - 1;
+    const t = i / snake.length;
+
+    // Body glow
+    const g = ctx.createRadialGradient(cx, cy, CELL*0.1, cx, cy, CELL*0.5);
+    const hue = 140 + t * 30;
+    g.addColorStop(0, `hsla(${hue},80%,${isHead?60:48}%,0.9)`);
+    g.addColorStop(1, `hsla(${hue},80%,40%,0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(cx-CELL*0.5, cy-CELL*0.5, CELL, CELL);
+
+    // Segment
+    ctx.fillStyle = `hsl(${hue},75%,${isHead?58:45}%)`;
+    ctx.shadowColor = `hsl(${hue},80%,50%)`; ctx.shadowBlur = isHead ? 14 : 6;
+    ctx.beginPath(); ctx.roundRect(x*CELL+3, y*CELL+3, CELL-6, CELL-6, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Eyes on head
+    if (isHead) {
+      ctx.fillStyle = "#fff";
+      const [edx, edy] = DIR[dir];
+      const ex = cx + edx * 5, ey = cy + edy * 5;
+      ctx.beginPath(); ctx.arc(ex - edy*4, ey - edx*4, 3.5, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex + edy*4, ey + edx*4, 3.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#111";
+      ctx.beginPath(); ctx.arc(ex - edy*4 + edx*1.5, ey - edx*4 + edy*1.5, 1.8, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex + edy*4 + edx*1.5, ey + edx*4 + edy*1.5, 1.8, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function loop(ts) {
+  if (!over && !paused && ts - lastStep >= speed) { step(); lastStep = ts; }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function setDir(d) {
+  if (d && dir !== OPP[d]) nextDir = d;
+}
+
+function start() {
+  if (over) { init(); return; }
+  if (paused) { paused = false; msgEl.style.opacity = "0"; lastStep = performance.now(); }
+}
+
+// Keyboard
+document.addEventListener("keydown", e => {
+  const map = { ArrowUp:"UP", ArrowDown:"DOWN", ArrowLeft:"LEFT", ArrowRight:"RIGHT" };
+  const d = map[e.code];
+  if (d) { e.preventDefault(); setDir(d); }
+  if (e.code === "Space" || e.code === "KeyW") { e.preventDefault(); start(); }
+});
+
+// Touch
+let tx0 = 0, ty0 = 0;
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  tx0 = t.clientX; ty0 = t.clientY;
+  start();
+}, { passive: false });
+
+canvas.addEventListener("touchmove", e => { e.preventDefault(); }, { passive: false });
+
+canvas.addEventListener("touchend", e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  const dx = t.clientX - tx0, dy = t.clientY - ty0;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (Math.max(absDx, absDy) < 20) return;
+  if (absDx > absDy) setDir(dx > 0 ? "RIGHT" : "LEFT");
+  else setDir(dy > 0 ? "DOWN" : "UP");
+});
+
+// Click to start
+canvas.addEventListener("click", () => start());
+
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
